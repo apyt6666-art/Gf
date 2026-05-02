@@ -1,12 +1,7 @@
-const {
-  SlashCommandBuilder,
-  PermissionsBitField,
-  EmbedBuilder
-} = require('discord.js');
+const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder, REST, Routes } = require("discord.js");
+const fs = require("fs");
 
-const fs = require('fs');
-
-// ================== DATABASE ==================
+// ================== DATA ==================
 let data = {
   warnEmoji: "🍥",
   modRoles: [],
@@ -16,111 +11,96 @@ let data = {
   usedMessages: {}
 };
 
-if (fs.existsSync('./data.json')) {
-  data = JSON.parse(fs.readFileSync('./data.json'));
+if (fs.existsSync("./data.json")) {
+  data = JSON.parse(fs.readFileSync("./data.json"));
 }
 
 function save() {
-  fs.writeFileSync('./data.json', JSON.stringify(data, null, 2));
+  fs.writeFileSync("./data.json", JSON.stringify(data, null, 2));
 }
 
 // ================== SLASH COMMANDS ==================
-const warnCommands = [
-
+const commands = [
   new SlashCommandBuilder()
-    .setName('setwarnemoji')
-    .setDescription('تحديد ايموجي التحذير')
+    .setName("setwarnemoji")
+    .setDescription("تحديد ايموجي التحذير")
     .addStringOption(o =>
-      o.setName('emoji').setRequired(true)
+      o.setName("emoji")
+        .setDescription("الايموجي")
+        .setRequired(true)
     ),
 
   new SlashCommandBuilder()
-    .setName('setmodroles')
-    .setDescription('تحديد 6 رتب')
-    .addRoleOption(o => o.setName('role1').setRequired(true))
-    .addRoleOption(o => o.setName('role2'))
-    .addRoleOption(o => o.setName('role3'))
-    .addRoleOption(o => o.setName('role4'))
-    .addRoleOption(o => o.setName('role5'))
-    .addRoleOption(o => o.setName('role6')),
+    .setName("setmodroles")
+    .setDescription("تحديد رتب المود")
+    .addRoleOption(o => o.setName("role1").setDescription("رتبة 1").setRequired(true))
+    .addRoleOption(o => o.setName("role2").setDescription("رتبة 2"))
+    .addRoleOption(o => o.setName("role3").setDescription("رتبة 3"))
+    .addRoleOption(o => o.setName("role4").setDescription("رتبة 4"))
+    .addRoleOption(o => o.setName("role5").setDescription("رتبة 5"))
+    .addRoleOption(o => o.setName("role6").setDescription("رتبة 6")),
 
   new SlashCommandBuilder()
-    .setName('setlogchannel')
-    .setDescription('تحديد روم اللوق')
+    .setName("setlogchannel")
+    .setDescription("تحديد روم اللوق")
     .addChannelOption(o =>
-      o.setName('channel').setRequired(true)
+      o.setName("channel")
+        .setDescription("روم اللوق")
+        .setRequired(true)
     ),
 
   new SlashCommandBuilder()
-    .setName('setmessages')
-    .setDescription('تحديد 5 رسائل')
-    .addStringOption(o => o.setName('m1').setRequired(true))
-    .addStringOption(o => o.setName('m2').setRequired(true))
-    .addStringOption(o => o.setName('m3').setRequired(true))
-    .addStringOption(o => o.setName('m4').setRequired(true))
-    .addStringOption(o => o.setName('m5').setRequired(true)),
+    .setName("setmessages")
+    .setDescription("تحديد رسائل التحذير")
+    .addStringOption(o => o.setName("m1").setDescription("رسالة 1").setRequired(true))
+    .addStringOption(o => o.setName("m2").setDescription("رسالة 2").setRequired(true))
+    .addStringOption(o => o.setName("m3").setDescription("رسالة 3").setRequired(true))
+    .addStringOption(o => o.setName("m4").setDescription("رسالة 4").setRequired(true))
+    .addStringOption(o => o.setName("m5").setDescription("رسالة 5").setRequired(true)),
 
   new SlashCommandBuilder()
-    .setName('clearwarns')
-    .setDescription('حذف تحذيرات شخص')
+    .setName("clearwarns")
+    .setDescription("مسح التحذيرات")
     .addUserOption(o =>
-      o.setName('user').setRequired(true)
+      o.setName("user")
+        .setDescription("المستخدم")
+        .setRequired(true)
     )
 ];
 
-// ================== INTERACTION ==================
-async function handleWarnInteraction(interaction) {
-  if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-    return interaction.reply({ content: 'Admin فقط', ephemeral: true });
-  }
+// ================== REGISTER ==================
+async function registerWarnCommands(clientId, guildId, token) {
+  const rest = new REST({ version: "10" }).setToken(token);
 
-  if (interaction.commandName === 'setwarnemoji') {
-    data.warnEmoji = interaction.options.getString('emoji');
-    save();
-    return interaction.reply('تم');
-  }
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(clientId, guildId),
+      { body: commands }
+    );
 
-  if (interaction.commandName === 'setmodroles') {
-    data.modRoles = [];
-    for (let i = 1; i <= 6; i++) {
-      const role = interaction.options.getRole(`role${i}`);
-      if (role) data.modRoles.push(role.id);
-    }
-    save();
-    return interaction.reply('تم حفظ الرتب');
-  }
-
-  if (interaction.commandName === 'setlogchannel') {
-    data.logChannel = interaction.options.getChannel('channel').id;
-    save();
-    return interaction.reply('تم');
-  }
-
-  if (interaction.commandName === 'setmessages') {
-    data.messages = [
-      interaction.options.getString('m1'),
-      interaction.options.getString('m2'),
-      interaction.options.getString('m3'),
-      interaction.options.getString('m4'),
-      interaction.options.getString('m5')
-    ];
-    save();
-    return interaction.reply('تم حفظ الرسائل');
-  }
-
-  if (interaction.commandName === 'clearwarns') {
-    const user = interaction.options.getUser('user');
-    data.warns[user.id] = 0;
-    save();
-    return interaction.reply(`تم تصفير تحذيرات ${user}`);
+    console.log("✅ Warn commands registered");
+  } catch (e) {
+    console.log("❌ Warn register error:", e);
   }
 }
 
-// ================== REACTION ==================
-async function handleWarnReaction(reaction, user) {
-  if (user.bot) return;
+// ================== SYSTEM ==================
+function warnSystem(message, client) {
+  return new Promise(async (resolve) => {
+    if (!message?.author || message.author.bot) return resolve(false);
 
+    const emoji = data.warnEmoji;
+
+    // هنا فقط منطقك الحقيقي يكون (لو عندك reaction system لاحقاً)
+    resolve(false);
+  });
+}
+
+// ================== REACTION SYSTEM ==================
+async function handleReaction(reaction, user, client) {
   try {
+    if (user.bot) return;
+
     if (reaction.partial) await reaction.fetch();
     if (reaction.message.partial) await reaction.message.fetch();
 
@@ -139,14 +119,12 @@ async function handleWarnReaction(reaction, user) {
     }
 
     const msg = reaction.message;
+    const target = msg.author;
 
     if (!data.usedMessages[msg.id]) data.usedMessages[msg.id] = [];
     if (data.usedMessages[msg.id].includes(user.id)) return;
 
     data.usedMessages[msg.id].push(user.id);
-
-    const target = msg.author;
-    const deletedContent = msg.content;
 
     await msg.delete();
 
@@ -156,23 +134,24 @@ async function handleWarnReaction(reaction, user) {
     const count = data.warns[target.id];
     const remaining = 3 - count;
 
-    const randomMsg = data.messages[Math.floor(Math.random() * data.messages.length)];
+    const randomMsg =
+      data.messages[Math.floor(Math.random() * (data.messages.length || 1))] ||
+      "تم تحذيرك";
 
     msg.channel.send(`<@${target.id}> ${randomMsg} (${count}/3) باقي ${remaining}`);
 
-    // ===== LOG =====
+    // LOG
     if (data.logChannel) {
       const ch = guild.channels.cache.get(data.logChannel);
+
       if (ch) {
         const embed = new EmbedBuilder()
-          .setColor('Red')
-          .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL() })
-          .setThumbnail(target.displayAvatarURL())
-          .addFields(
-            { name: 'المخالف', value: `<@${target.id}>`, inline: true },
-            { name: 'المحذر', value: `<@${user.id}>`, inline: true },
-            { name: 'التحذيرات', value: `${count}/3`, inline: true },
-            { name: 'الرسالة', value: deletedContent || 'بدون نص' }
+          .setColor("Red")
+          .setTitle("Warn Log")
+          .setDescription(
+            `المخالف: <@${target.id}>\n` +
+            `المحذر: <@${user.id}>\n` +
+            `التحذيرات: ${count}/3`
           )
           .setTimestamp();
 
@@ -182,22 +161,23 @@ async function handleWarnReaction(reaction, user) {
 
     if (count >= 3) {
       const targetMember = await guild.members.fetch(target.id);
-      await targetMember.timeout(2 * 60 * 60 * 1000, '3 warns');
-
-      msg.channel.send(`<@${target.id}> تم إعطاؤه تايم أوت ساعتين`);
+      await targetMember.timeout(2 * 60 * 60 * 1000, "3 warns");
 
       data.warns[target.id] = 0;
     }
 
     save();
+    resolve(true);
 
   } catch (e) {
     console.log(e);
+    resolve(false);
   }
 }
 
 module.exports = {
-  warnCommands,
-  handleWarnInteraction,
-  handleWarnReaction
+  warnSystem,
+  registerWarnCommands,
+  handleReaction,
+  data
 };
