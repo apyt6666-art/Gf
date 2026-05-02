@@ -5,18 +5,8 @@ const mongoose = require("mongoose");
 
 // ================== SYSTEMS ==================
 const { buildReply } = require("./ai/ghazal");
-
-const {
-  handleFilterMessage,
-  filterCommands,
-  handleFilterInteraction
-} = require("./systems/filter");
-
-const {
-  warnCommands,
-  handleWarnInteraction,
-  handleWarnReaction
-} = require("./systems/warn");
+const { filterSystem, registerFilter } = require("./systems/filter");
+const { warnSystem, registerWarnCommands } = require("./systems/warn");
 
 // ================== ENV ==================
 const TOKEN = process.env.TOKEN;
@@ -41,26 +31,19 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ Mongo Connected"))
   .catch(err => console.log(err));
 
-// ================== REGISTER SLASH COMMANDS ==================
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-(async () => {
-  const commands = [
-    ...filterCommands,
-    ...warnCommands
-  ];
+// ================== READY ==================
+client.once("ready", async () => {
+  console.log(`Logged in as ${client.user.tag}`);
 
   try {
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
+    await registerFilter(CLIENT_ID, GUILD_ID, TOKEN);
+    await registerWarnCommands(CLIENT_ID, GUILD_ID, TOKEN);
 
-    console.log("✅ Slash Commands Ready");
+    console.log("✅ Slash Commands Registered");
   } catch (e) {
-    console.log(e);
+    console.log("❌ Slash Error:", e);
   }
-})();
+});
 
 // ================== MESSAGE CREATE ==================
 client.on("messageCreate", async (message) => {
@@ -68,36 +51,24 @@ client.on("messageCreate", async (message) => {
 
   const content = message.content.toLowerCase();
 
-  // ================== GHAZAL AI ==================
+  // ================== AI ==================
   if (content.includes("غزل")) {
-    try {
-      const reply = await buildReply(message);
-      return message.reply(reply);
-    } catch (e) {
-      console.log(e);
-    }
+    const reply = await buildReply(message);
+    return message.reply(reply);
   }
 
-  // ================== FILTER SYSTEM ==================
-  await handleFilterMessage(message);
-});
+  // ================== FILTER ==================
+  await filterSystem(message, client);
 
-// ================== INTERACTIONS ==================
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  // فلتر
-  if (interaction.commandName === "setfilter") {
-    return handleFilterInteraction(interaction);
-  }
-
-  // تحذيرات
-  return handleWarnInteraction(interaction);
+  // ================== WARN ==================
+  await warnSystem(message, client);
 });
 
 // ================== REACTIONS ==================
 client.on("messageReactionAdd", async (reaction, user) => {
-  await handleWarnReaction(reaction, user);
+  if (user.bot) return;
+
+  await warnSystem(reaction, user, client);
 });
 
 // ================== LOGIN ==================
