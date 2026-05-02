@@ -1,12 +1,13 @@
 require("dotenv").config();
 
-const { Client, GatewayIntentBits, Partials, REST, Routes } = require("discord.js");
+const { Client, GatewayIntentBits, Partials } = require("discord.js");
 const mongoose = require("mongoose");
 
 // ================== SYSTEMS ==================
 const { buildReply } = require("./ai/ghazal");
+
 const { filterSystem, registerFilter } = require("./systems/filter");
-const { warnSystem, registerWarnCommands } = require("./systems/warn");
+const { registerWarnCommands, handleReaction } = require("./systems/warn");
 
 // ================== ENV ==================
 const TOKEN = process.env.TOKEN;
@@ -31,27 +32,29 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ Mongo Connected"))
   .catch(err => console.log(err));
 
-// ================== READY ==================
+// ================== READY (IMPORTANT FIX) ==================
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   try {
+    console.log("⏳ Registering slash commands...");
+
     await registerFilter(CLIENT_ID, GUILD_ID, TOKEN);
     await registerWarnCommands(CLIENT_ID, GUILD_ID, TOKEN);
 
     console.log("✅ Slash Commands Registered");
   } catch (e) {
-    console.log("❌ Slash Error:", e);
+    console.log("❌ Slash Register Error:", e);
   }
 });
 
-// ================== MESSAGE CREATE ==================
+// ================== MESSAGE ==================
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   const content = message.content.toLowerCase();
 
-  // ================== AI ==================
+  // ================== GHAZAL AI ==================
   if (content.includes("غزل")) {
     const reply = await buildReply(message);
     return message.reply(reply);
@@ -59,16 +62,13 @@ client.on("messageCreate", async (message) => {
 
   // ================== FILTER ==================
   await filterSystem(message, client);
-
-  // ================== WARN ==================
-  await warnSystem(message, client);
 });
 
 // ================== REACTIONS ==================
 client.on("messageReactionAdd", async (reaction, user) => {
   if (user.bot) return;
 
-  await warnSystem(reaction, user, client);
+  await handleReaction(reaction, user, client);
 });
 
 // ================== LOGIN ==================
