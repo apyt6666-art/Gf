@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, REST, Routes, PermissionsBitField, EmbedBuilder } = require("discord.js");
 
 // ================== BAD WORDS ==================
 const badWords = [
@@ -18,49 +18,55 @@ let config = {
 };
 
 // ================== SLASH COMMAND ==================
-const filterCommands = [
+const commands = [
   new SlashCommandBuilder()
-    .setName('setfilter')
-    .setDescription('تحديد لوق الفلتر والرتبة')
+    .setName("setfilter")
+    .setDescription("تحديد لوق الفلتر والرتبة")
     .addChannelOption(o =>
-      o.setName('log')
-       .setDescription('روم اللوق')
-       .setRequired(true)
+      o.setName("log")
+        .setDescription("روم اللوق")
+        .setRequired(true)
     )
     .addRoleOption(o =>
-      o.setName('role')
-       .setDescription('الرتبة اللي تنمنشن')
-       .setRequired(true)
+      o.setName("role")
+        .setDescription("الرتبة اللي تنمنشن")
+        .setRequired(true)
     )
 ];
 
-// ================== HANDLE INTERACTION ==================
-async function handleFilterInteraction(interaction) {
-  if (interaction.commandName !== "setfilter") return;
+// ================== REGISTER ==================
+async function registerFilter(clientId, guildId, token) {
+  const rest = new REST({ version: "10" }).setToken(token);
 
-  config.logChannel = interaction.options.getChannel("log").id;
-  config.mentionRole = interaction.options.getRole("role").id;
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(clientId, guildId),
+      { body: commands }
+    );
 
-  return interaction.reply("تم ضبط فلتر الكلمات");
+    console.log("✅ Filter command registered");
+  } catch (e) {
+    console.log("❌ Filter register error:", e);
+  }
 }
 
-// ================== NORMALIZE (ANTI BYPASS) ==================
+// ================== CLEAN TEXT ==================
 function normalize(text) {
   return text
     .toLowerCase()
-    .replace(/[\u064B-\u065F]/g, "")
-    .replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, "")
-    .replace(/(.)\1+/g, "$1");
+    .replace(/[^a-zA-Z0-9\u0600-\u06FF\s]/g, " ") // يشيل الرموز
+    .split(/\s+/); // يقسم كلمات
 }
 
-// ================== MESSAGE HANDLER ==================
-async function handleFilterMessage(message) {
-  if (message.author.bot) return;
+// ================== FILTER SYSTEM ==================
+async function filterSystem(message, client) {
+  if (!message || message.author.bot) return;
 
-  const clean = normalize(message.content);
+  const words = normalize(message.content);
 
-  const found = badWords.some(word =>
-    clean.includes(normalize(word))
+  // تطابق كلمة كاملة فقط
+  const found = badWords.some(bad =>
+    words.includes(bad)
   );
 
   if (!found) return;
@@ -68,27 +74,27 @@ async function handleFilterMessage(message) {
   try {
     await message.delete();
 
-    const member = await message.member;
-
+    const member = message.member;
     await member.timeout(5 * 60 * 1000, "Bad word detected");
 
-    const guild = message.guild;
-
-    // ===== LOG EMBED =====
+    // ================== LOG ==================
     if (config.logChannel) {
-      const log = guild.channels.cache.get(config.logChannel);
+      const log = message.guild.channels.cache.get(config.logChannel);
 
       if (log) {
+        const embed = new EmbedBuilder()
+          .setTitle("🚨 فلتر كلمة مسيئة")
+          .setColor(0xff0000)
+          .setDescription(
+            `**العضو:** <@${message.author.id}>\n` +
+            `**الرسالة:** ${message.content}\n` +
+            `**العقوبة:** تايم 5 دقائق`
+          )
+          .setTimestamp();
+
         log.send({
           content: `<@&${config.mentionRole}>`,
-          embeds: [{
-            title: "تم رصد كلمة مسيئة",
-            description:
-              `**العضو:** <@${message.author.id}>\n` +
-              `**الرسالة:** ${message.content}\n` +
-              `**العقوبة:** تايم 5 دقائق`,
-            color: 0xff0000
-          }]
+          embeds: [embed]
         });
       }
     }
@@ -98,8 +104,14 @@ async function handleFilterMessage(message) {
   }
 }
 
+// ================== SET CONFIG ==================
+function setConfig(logChannel, role) {
+  config.logChannel = logChannel;
+  config.mentionRole = role;
+}
+
 module.exports = {
-  filterCommands,
-  handleFilterInteraction,
-  handleFilterMessage
+  filterSystem,
+  registerFilter,
+  setConfig
 };
